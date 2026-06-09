@@ -1,185 +1,150 @@
+/**
+ * App.tsx — CORRIGÉ
+ * 
+ * Fixes:
+ * 1. Save chargée AVANT d'entrer dans le jeu (pas de race condition)
+ * 2. isNewPlayer persisté correctement
+ * 3. Cinématique uniquement si vraiment nouveau joueur
+ * 4. Transition propre menu → jeu
+ */
+
 import Game from './components/Game'
 import HUD from './components/HUD'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { loadSave, deleteSave, type SaveData } from './hooks/useSaveSystem'
-import { getActiveJob, subscribe, type ActiveJob } from './store/gameState'
+import { getActiveJob, getState, subscribe, type ActiveJob } from './store/gameState'
 import type { DoorZone } from './data/quebecBuildings'
 
-type Phase = 'menu' | 'game'
+type Phase = 'menu' | 'loading' | 'game'
+
+// ─────────────────────────────────────────────
+// ✅ Chargement synchrone au module load
+// La save est lue UNE SEULE FOIS avant tout rendu
+// ─────────────────────────────────────────────
+const INITIAL_SAVE = loadSave()  // ← hors du composant = synchrone garanti
 
 export default function App() {
-  const [speed,       setSpeed]       = useState(0)
-  const [zone,        setZone]        = useState('Québec — Route 138 Ouest')
-  const [mode,        setMode]        = useState<'driving' | 'walking'>('driving')
-  const [saveStatus,  setSaveStatus]  = useState<'saved' | 'saving' | 'idle'>('idle')
-  const [phase,       setPhase]       = useState<Phase>('menu')
-  const [fade,        setFade]        = useState(false)
-  const [savedGame,   setSavedGame]   = useState<SaveData | null>(null)
-  const [isNewPlayer, setIsNewPlayer] = useState(false)
-  const [money,       setMoney]       = useState(2500)
-  const [activeJob,   setActiveJob]   = useState<ActiveJob | null>(null)
-  const [notification, setNotification] = useState<string | null>(null)
-  const [nearBuilding, setNearBuilding] = useState<DoorZone | null>(null)
+  const [speed,          setSpeed]          = useState(0)
+  const [zone,           setZone]           = useState('Québec — Route 138 Ouest')
+  const [mode,           setMode]           = useState<'driving' | 'walking'>('driving')
+  const [saveStatus,     setSaveStatus]     = useState<'saved' | 'saving' | 'idle'>('idle')
+  const [phase,          setPhase]          = useState<Phase>('menu')
+  const [fade,           setFade]           = useState(false)
+  const [nearBuilding,   setNearBuilding]   = useState<DoorZone | null>(null)
   const [interiorPrompt, setInteriorPrompt] = useState<string | null>(null)
-  const [isInInterior, setIsInInterior] = useState(false)
+  const [isInInterior,   setIsInInterior]   = useState(false)
+  const [money,          setMoney]          = useState(INITIAL_SAVE?.money ?? 2500)
+  const [activeJob,      setActiveJob]      = useState<ActiveJob | null>(null)
+  const [notification,   setNotification]   = useState<string | null>(null)
 
-  const saveData = useRef<SaveData | null>(null)
+  // ✅ La save utilisée pour lancer le jeu — jamais null si "Continuer"
+  const [activeSave,  setActiveSave]  = useState<SaveData | null>(null)
+  const [isNewPlayer, setIsNewPlayer] = useState(false)
 
-  // Charge la sauvegarde au démarrage
+  // Ref stable pour la save affichée dans le menu
+  const savedGame = INITIAL_SAVE
+
+  // ── Store sync ────────────────────────────────
+
   useEffect(() => {
-    saveData.current = loadSave()
-    setSavedGame(saveData.current)
+    const syncState = () => {
+      const s = getState()
+      setMoney(s.money)
+      setActiveJob(getActiveJob())
+    }
+    syncState()
+    return subscribe(syncState)
   }, [])
 
-  // Abonnement au store de jobs/argent
+  // ── Notification fin de job ───────────────────
+
+  const prevMoneyRef = useRef(money)
   useEffect(() => {
-    const unsub = subscribe(() => {
-      const { money: m } = { money: 2500 } // will be replaced below
-      setActiveJob(getActiveJob())
-    })
-
-    // Polling léger pour l'argent (toutes les 500ms)
-    const interval = setInterval(() => {
-      const { money: m } = require('./store/gameState').getState()
-      setMoney(m)
-      setActiveJob(getActiveJob())
-    }, 500)
-
-    return () => {
-      unsub()
-      clearInterval(interval)
+    if (!activeJob && money > prevMoneyRef.current) {
+      const gained = money - prevMoneyRef.current
+      setNotification(`+${gained.toLocaleString('fr-CA')}$ gagné !`)
+      const t = setTimeout(() => setNotification(null), 3000)
+      return () => clearTimeout(t)
     }
-  }, [])
-
-  // Notification quand un job se termine
-  useEffect(() => {
-    if (!activeJob && money > 2500) {
-      const { money: currentMoney } = require('./store/gameState').getState()
-      // Afficher une notification de gain
-    }
+    prevMoneyRef.current = money
   }, [activeJob, money])
 
+  // ── Lancer le jeu ─────────────────────────────
+
   const handleStart = useCallback((continueGame: boolean) => {
-    if (continueGame && saveData.current) {
-      setSavedGame(saveData.current)
+    // ✅ FIX: décider de la save AVANT la transition
+    if (continueGame && savedGame) {
+      setActiveSave(savedGame)
       setIsNewPlayer(false)
-      setZone(saveData.current.zone)
-      setMode(saveData.current.mode)
-      setMoney(saveData.current.money ?? 2500)
+      // Pré-charger les infos HUD depuis la save
+      setZone(savedGame.zone ?? 'Québec — Route 138 Ouest')
+      setMode(savedGame.mode ?? 'driving')
+      setMoney(savedGame.money ?? 2500)
     } else {
-      setSavedGame(null)
+      setActiveSave(null)
       setIsNewPlayer(true)
+      setMoney(2500)
+      setZone('Québec — Route 138 Ouest')
+      setMode('driving')
     }
+
+    // Fade out → phase loading → phase game
     setFade(true)
+
     setTimeout(() => {
       setPhase('game')
-      setFade(false)
     }, 600)
-  }, [])
+
+    setTimeout(() => {
+      setFade(false)
+    }, 900)
+  }, [savedGame])
+
+  // ── Effacer save ──────────────────────────────
 
   const handleDeleteSave = useCallback(() => {
     deleteSave()
-    saveData.current = null
-    setSavedGame(null)
+    // Reload propre pour réinitialiser INITIAL_SAVE
+    window.location.reload()
   }, [])
 
-  return (
-    <div style={{ width: '100vw', height: '100vh', background: '#0a1628', overflow: 'hidden' }}>
+  // ─────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────
 
-      {/* Fondu */}
+  return (
+    <div style={{
+      width:      '100vw',
+      height:     '100vh',
+      background: '#0a1628',
+      overflow:   'hidden',
+    }}>
+
+      {/* ── Fondu ── */}
       <div style={{
-        position: 'absolute', inset: 0, zIndex: 50,
-        background: '#000',
-        opacity: fade ? 1 : 0,
-        transition: 'opacity 0.6s ease',
-        pointerEvents: 'none',
+        position:       'absolute',
+        inset:          0,
+        zIndex:         50,
+        background:     '#000',
+        opacity:        fade ? 1 : 0,
+        transition:     'opacity 0.6s ease',
+        pointerEvents:  'none',
       }} />
 
-      {/* ── MENU PRINCIPAL ── */}
+      {/* ════════════════════════════════════
+          MENU PRINCIPAL
+          ════════════════════════════════════ */}
       {phase === 'menu' && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 10,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          background: 'linear-gradient(180deg, #0a1628 0%, #1a3a5c 50%, #0d2438 100%)',
-          color: 'white', fontFamily: 'monospace',
-        }}>
-          <div style={{ fontSize: 11, letterSpacing: 8, color: '#4a9ede', marginBottom: 8, textTransform: 'uppercase' }}>
-            Bienvenue dans
-          </div>
-          <div style={{ fontSize: 52, fontWeight: 900, letterSpacing: 4, color: '#ffffff', lineHeight: 1, marginBottom: 4 }}>
-            ETHERWORLD
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 12, color: '#3a7ebd', marginBottom: 2 }}>
-            QC RP
-          </div>
-          <div style={{ fontSize: 11, color: '#2a6aa0', letterSpacing: 4, marginBottom: 40 }}>
-            QUÉBEC · PORTNEUF · TROIS-RIVIÈRES · ETHERWORLD CITY
-          </div>
-
-          <div style={{
-            fontSize: 10, color: '#4a8aaa', marginBottom: 36, textAlign: 'center', lineHeight: 1.9,
-            border: '1px solid #1a4a6a', padding: '16px 28px', borderRadius: 4,
-          }}>
-            🚗 &nbsp;WASD / Flèches — Conduire &nbsp;&nbsp;&nbsp; Espace — Freiner<br />
-            🚪 &nbsp;E — Sortir / Entrer dans le véhicule ou bâtiment<br />
-            🚶 &nbsp;À pied : WASD pour marcher, A/D pour tourner<br />
-            🌲 &nbsp;Route 138 de Québec vers EtherWorld City<br />
-            🏙️ &nbsp;Laurentides · Fleuve Saint-Laurent · A-40 · Ville complète
-          </div>
-
-          {savedGame && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <button
-                onClick={() => handleStart(true)}
-                style={{
-                  background: 'rgba(20,60,20,0.6)', border: '2px solid #3acd6e',
-                  color: '#60ef90', padding: '14px 48px', fontSize: 14,
-                  letterSpacing: 6, cursor: 'pointer', fontFamily: 'monospace',
-                  textTransform: 'uppercase', transition: 'all 0.2s', width: 320,
-                }}
-              >
-                ▶ Continuer
-              </button>
-              <div style={{ fontSize: 9, color: '#3a7a4a', letterSpacing: 2 }}>
-                {savedGame.zone} · {savedGame.mode === 'walking' ? 'À PIED' : 'EN VOITURE'}
-                &nbsp;·&nbsp; {savedGame.money?.toLocaleString('fr-CA') ?? '0'}$
-                <span style={{ marginLeft: 10, color: '#2a5a3a' }}>
-                  {new Date(savedGame.savedAt).toLocaleDateString('fr-CA', { day: '2-digit', month: 'short' })}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={() => handleStart(false)}
-            style={{
-              background: 'transparent', border: '2px solid #3a8ede',
-              color: '#5ab0ff', padding: '14px 48px', fontSize: 14,
-              letterSpacing: 6, cursor: 'pointer', fontFamily: 'monospace',
-              textTransform: 'uppercase', transition: 'all 0.2s',
-              width: savedGame ? 320 : undefined,
-            }}
-          >
-            {savedGame ? '✦ Nouvelle Partie' : '▶ Démarrer'}
-          </button>
-
-          {savedGame && (
-            <button
-              onClick={handleDeleteSave}
-              style={{
-                marginTop: 18, background: 'transparent', border: 'none',
-                color: '#3a4a5a', fontSize: 9, cursor: 'pointer',
-                fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase',
-              }}
-            >
-              ✕ Effacer la sauvegarde
-            </button>
-          )}
-        </div>
+        <MenuScreen
+          savedGame={savedGame}
+          onStart={handleStart}
+          onDeleteSave={handleDeleteSave}
+        />
       )}
 
-      {/* ── JEU ── */}
+      {/* ════════════════════════════════════
+          JEU
+          ════════════════════════════════════ */}
       {phase === 'game' && (
         <>
           <Game
@@ -190,7 +155,7 @@ export default function App() {
             onNearBuilding={setNearBuilding}
             onInteriorPrompt={setInteriorPrompt}
             onIsInInterior={setIsInInterior}
-            initialSave={savedGame}
+            initialSave={activeSave}       // ✅ jamais de race condition
             isNewPlayer={isNewPlayer}
           />
 
@@ -207,6 +172,7 @@ export default function App() {
             isInInterior={isInInterior}
           />
 
+          {/* ✅ Cinématique seulement si VRAIMENT nouveau joueur */}
           {isNewPlayer && <CinematicOverlay />}
         </>
       )}
@@ -214,9 +180,208 @@ export default function App() {
   )
 }
 
-// ── Sous-titres cinématique ──
+// ═══════════════════════════════════════════
+// MENU SCREEN — extrait pour clarté
+// ═══════════════════════════════════════════
+
+interface MenuScreenProps {
+  savedGame:     SaveData | null
+  onStart:       (continueGame: boolean) => void
+  onDeleteSave:  () => void
+}
+
+function MenuScreen({ savedGame, onStart, onDeleteSave }: MenuScreenProps) {
+  // ✅ Formater la date proprement — gérer savedAt optionnel
+  const saveDate = savedGame?.savedAt
+    ? new Date(savedGame.savedAt).toLocaleDateString('fr-CA', {
+        day:   '2-digit',
+        month: 'short',
+        hour:  '2-digit',
+        minute:'2-digit',
+      })
+    : null
+
+  return (
+    <div style={{
+      position:       'absolute',
+      inset:          0,
+      zIndex:         10,
+      display:        'flex',
+      flexDirection:  'column',
+      alignItems:     'center',
+      justifyContent: 'center',
+      background:     'linear-gradient(180deg, #0a1628 0%, #1a3a5c 50%, #0d2438 100%)',
+      color:          'white',
+      fontFamily:     'monospace',
+    }}>
+
+      {/* Titre */}
+      <div style={{
+        fontSize:       11,
+        letterSpacing:  8,
+        color:          '#4a9ede',
+        marginBottom:   8,
+        textTransform:  'uppercase',
+      }}>
+        Bienvenue dans
+      </div>
+      <div style={{
+        fontSize:     52,
+        fontWeight:   900,
+        letterSpacing: 4,
+        color:        '#ffffff',
+        lineHeight:   1,
+        marginBottom: 4,
+      }}>
+        ETHERWORLD
+      </div>
+      <div style={{
+        fontSize:     28,
+        fontWeight:   700,
+        letterSpacing: 12,
+        color:        '#3a7ebd',
+        marginBottom: 2,
+      }}>
+        QC RP
+      </div>
+      <div style={{
+        fontSize:     11,
+        color:        '#2a6aa0',
+        letterSpacing: 4,
+        marginBottom: 40,
+      }}>
+        QUÉBEC · PORTNEUF · TROIS-RIVIÈRES · ETHERWORLD CITY
+      </div>
+
+      {/* Contrôles */}
+      <div style={{
+        fontSize:     10,
+        color:        '#4a8aaa',
+        marginBottom: 36,
+        textAlign:    'center',
+        lineHeight:   1.9,
+        border:       '1px solid #1a4a6a',
+        padding:      '16px 28px',
+        borderRadius: 4,
+      }}>
+        🚗 &nbsp;WASD / Flèches — Conduire &nbsp;&nbsp;&nbsp; Espace — Freiner<br />
+        🚪 &nbsp;E — Sortir / Entrer dans le véhicule ou bâtiment<br />
+        🚶 &nbsp;À pied : WASD pour marcher, A/D pour tourner<br />
+        🌲 &nbsp;Route 138 de Québec vers EtherWorld City<br />
+        🏙️ &nbsp;Laurentides · Fleuve Saint-Laurent · A-40 · Ville complète
+      </div>
+
+      {/* Bouton Continuer */}
+      {savedGame && (
+        <div style={{
+          display:        'flex',
+          flexDirection:  'column',
+          alignItems:     'center',
+          gap:            10,
+          marginBottom:   14,
+        }}>
+          <button
+            onClick={() => onStart(true)}
+            style={{
+              background:      'rgba(20,60,20,0.6)',
+              border:          '2px solid #3acd6e',
+              color:           '#60ef90',
+              padding:         '14px 48px',
+              fontSize:        14,
+              letterSpacing:   6,
+              cursor:          'pointer',
+              fontFamily:      'monospace',
+              textTransform:   'uppercase',
+              transition:      'all 0.2s',
+              width:           320,
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(30,90,30,0.8)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(20,60,20,0.6)'
+            }}
+          >
+            ▶ Continuer
+          </button>
+
+          {/* Infos save */}
+          <div style={{ fontSize: 9, color: '#3a7a4a', letterSpacing: 2, textAlign: 'center' }}>
+            {savedGame.zone ?? 'Route 138'}
+            &nbsp;·&nbsp;
+            {savedGame.mode === 'walking' ? 'À PIED' : 'EN VOITURE'}
+            &nbsp;·&nbsp;
+            {(savedGame.money ?? 0).toLocaleString('fr-CA')}$
+            {saveDate && (
+              <span style={{ marginLeft: 10, color: '#2a5a3a' }}>
+                {saveDate}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bouton Nouvelle Partie */}
+      <button
+        onClick={() => onStart(false)}
+        style={{
+          background:    'transparent',
+          border:        '2px solid #3a8ede',
+          color:         '#5ab0ff',
+          padding:       '14px 48px',
+          fontSize:      14,
+          letterSpacing: 6,
+          cursor:        'pointer',
+          fontFamily:    'monospace',
+          textTransform: 'uppercase',
+          transition:    'all 0.2s',
+          width:         savedGame ? 320 : undefined,
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLElement).style.borderColor = '#5ab0ff'
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLElement).style.borderColor = '#3a8ede'
+        }}
+      >
+        {savedGame ? '✦ Nouvelle Partie' : '▶ Démarrer'}
+      </button>
+
+      {/* Effacer save */}
+      {savedGame && (
+        <button
+          onClick={onDeleteSave}
+          style={{
+            marginTop:     18,
+            background:    'transparent',
+            border:        'none',
+            color:         '#3a4a5a',
+            fontSize:      9,
+            cursor:        'pointer',
+            fontFamily:    'monospace',
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.color = '#aa4444'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.color = '#3a4a5a'
+          }}
+        >
+          ✕ Effacer la sauvegarde
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════
+// CINEMATIC OVERLAY
+// ═══════════════════════════════════════════
+
 function CinematicOverlay() {
-  const [visible, setVisible]     = useState(true)
+  const [visible,   setVisible]   = useState(true)
   const [textPhase, setTextPhase] = useState(0)
 
   const lines = [
@@ -237,21 +402,30 @@ function CinematicOverlay() {
 
   if (!visible) return null
 
+  const currentText = lines[textPhase]?.text ?? ''
+
   return (
     <div style={{
-      position: 'absolute', bottom: 100, left: '50%',
-      transform: 'translateX(-50%)',
-      zIndex: 20, textAlign: 'center', fontFamily: 'monospace',
+      position:      'absolute',
+      bottom:        100,
+      left:          '50%',
+      transform:     'translateX(-50%)',
+      zIndex:        20,
+      textAlign:     'center',
+      fontFamily:    'monospace',
       pointerEvents: 'none',
     }}>
       <div style={{
-        color: '#d0e8ff', fontSize: 13, letterSpacing: 4,
-        textTransform: 'uppercase',
-        textShadow: '0 2px 12px rgba(0,0,0,0.9)',
-        opacity: lines[textPhase]?.text ? 1 : 0,
-        transition: 'opacity 0.8s ease',
+        color:          '#d0e8ff',
+        fontSize:       13,
+        letterSpacing:  4,
+        textTransform:  'uppercase',
+        textShadow:     '0 2px 12px rgba(0,0,0,0.9)',
+        opacity:        currentText ? 1 : 0,
+        transition:     'opacity 0.8s ease',
+        minHeight:      20,
       }}>
-        {lines[textPhase]?.text}
+        {currentText}
       </div>
     </div>
   )

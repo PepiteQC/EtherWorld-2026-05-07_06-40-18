@@ -1,26 +1,36 @@
-# ── Dépendances ──
-node_modules/
-
 # ── Build ──
 dist/
 dist-ssr/
 
-# ── Environnement ──
-.env
+# ── Dépendances ──
+node_modules/
+
+# ── Environnement — NE JAMAIS COMMITER ──
 .env.local
-.env.production
+.env.*.local
+.env.production.local
+.env.staging.local
 
 # ── Logs ──
+logs/
 *.log
-firebase-debug.log
+npm-debug.log*
 
 # ── OS ──
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# ── IDE ──
-.vscode/
-.idea/
+# ── VS Code ──
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 
-# ── Fichiers de backup ──
-*.backup.*
+# ── TypeScript ──
+*.tsbuildinfo
+
+# ── Cache Vite ──
+.vite/
+
+# ── Tests ──
+coverage/

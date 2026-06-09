@@ -56,12 +56,10 @@ export default function Vehicle({
     if (vehicleRef.current) {
       vehicleRef.current.position.set(...initialPosition);
       vehicleRef.current.rotation.y = initialRotationY;
-      // Seed camera target immediately
       cameraTarget.current.set(initialPosition[0], initialPosition[1] + 1, initialPosition[2]);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // E key to exit vehicle
   useEffect(() => {
     if (!active) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -86,10 +84,8 @@ export default function Vehicle({
   useFrame((_, delta) => {
     if (!vehicleRef.current) return;
 
-    // Always keep worldPositionRef updated for walker proximity check
     worldPositionRef.current.copy(vehicleRef.current.position);
 
-    // Update save ref
     if (saveRef) {
       saveRef.current.pos.copy(vehicleRef.current.position);
       saveRef.current.rotY = vehicleRef.current.rotation.y;
@@ -133,11 +129,11 @@ export default function Vehicle({
 
     wheelRotRef.current += velocityRef.current * 3;
 
-    // Camera follow
+    // ══ CAMÉRA RAPPROCHÉE ══
     const camDir = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicleRef.current.quaternion);
-    const desiredCamPos = pos.clone().addScaledVector(camDir, 14).add(new THREE.Vector3(0, 5, 0));
-    camera.position.lerp(desiredCamPos, 0.06);
-    cameraTarget.current.lerp(new THREE.Vector3(pos.x, pos.y + 1, pos.z), 0.08);
+    const desiredCamPos = pos.clone().addScaledVector(camDir, 6).add(new THREE.Vector3(0, 2.5, 0));
+    camera.position.lerp(desiredCamPos, 0.10);
+    cameraTarget.current.lerp(new THREE.Vector3(pos.x, pos.y + 0.8, pos.z), 0.12);
     camera.lookAt(cameraTarget.current);
 
     onSpeedChange(velocityRef.current);
