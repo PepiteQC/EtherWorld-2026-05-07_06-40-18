@@ -1,17 +1,16 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
 import { AvatarCreator } from '@/components/avatar/avatar-creator'
 
 export default async function AvatarPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await .auth.getUser()
 
   if (!user) {
     redirect('/auth/login')
   }
 
   // Get active avatar
-  const { data: avatar } = await supabase
+  const { data: avatar } = await 
     .from('avatars')
     .select('*')
     .eq('user_id', user.id)
