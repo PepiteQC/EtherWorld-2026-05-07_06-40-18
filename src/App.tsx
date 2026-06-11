@@ -10,12 +10,13 @@
 
 import Game from './components/Game'
 import HUD from './components/HUD'
+import RayMarchingKinect from './components/kinect/RayMarchingKinect'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { loadSave, deleteSave, type SaveData } from './hooks/useSaveSystem'
 import { getActiveJob, getState, subscribe, type ActiveJob } from './store/gameState'
 import type { DoorZone } from './data/quebecBuildings'
 
-type Phase = 'menu' | 'loading' | 'game'
+type Phase = 'menu' | 'loading' | 'game' | 'kinect'
 
 // ─────────────────────────────────────────────
 // ✅ Chargement synchrone au module load
@@ -70,6 +71,13 @@ export default function App() {
   }, [activeJob, money])
 
   // ── Lancer le jeu ─────────────────────────────
+
+  // Expose phase setter for the Kinect demo button (menu → full-screen R3F ray marching)
+  const setAppPhase = useCallback((newPhase: Phase) => {
+    setPhase(newPhase)
+  }, [])
+  // Attach to window for the menu button (simple cross-component trigger)
+  ;(window as any).setAppPhase = setAppPhase
 
   const handleStart = useCallback((continueGame: boolean) => {
     // ✅ FIX: décider de la save AVANT la transition
@@ -140,6 +148,23 @@ export default function App() {
           onStart={handleStart}
           onDeleteSave={handleDeleteSave}
         />
+      )}
+
+      {/* ════════════════════════════════════
+          KINECT RAY MARCHING DEMO (React Three Fiber)
+          ════════════════════════════════════ */}
+      {phase === 'kinect' && (
+        <div className="relative w-full h-full">
+          <RayMarchingKinect />
+          
+          {/* Back button */}
+          <button
+            onClick={() => setPhase('menu')}
+            className="absolute top-4 right-4 z-[100] px-4 py-2 text-xs font-mono tracking-widest border border-white/30 hover:bg-white hover:text-black text-white/80 transition-colors"
+          >
+            ← BACK TO MENU
+          </button>
+        </div>
       )}
 
       {/* ════════════════════════════════════
@@ -346,6 +371,45 @@ function MenuScreen({ savedGame, onStart, onDeleteSave }: MenuScreenProps) {
       >
         {savedGame ? '✦ Nouvelle Partie' : '▶ Démarrer'}
       </button>
+
+      {/* ════════════════════════════════════
+          KINECT RAY MARCHING DEMO
+          React Three Fiber + Volumetric Ray Marching
+          (Depth visualization like the described Kinect app)
+          ════════════════════════════════════ */}
+      <button
+        onClick={() => {
+          // Switch to dedicated Kinect phase (full-screen canvas with Leva controls)
+          // This launches the ray marching depth visualization
+          (window as any).setAppPhase?.('kinect') || setPhase('kinect')
+        }}
+        style={{
+          marginTop:     28,
+          background:    'transparent',
+          border:        '1px solid #67f6ff',
+          color:         '#67f6ff',
+          padding:       '10px 32px',
+          fontSize:      12,
+          letterSpacing: 3,
+          cursor:        'pointer',
+          fontFamily:    'monospace',
+          textTransform: 'uppercase',
+          transition:    'all 0.2s',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLElement).style.background = 'rgba(103, 246, 255, 0.1)'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#a5f3fc'
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLElement).style.background = 'transparent'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#67f6ff'
+        }}
+      >
+        ▶ KINECT DEPTH • RAY MARCHING (R3F)
+      </button>
+      <div style={{ fontSize: 9, color: '#4a8aaa', marginTop: 6, letterSpacing: 1 }}>
+        React Three Fiber • Volumetric Ray Marching • Leva Controls
+      </div>
 
       {/* Effacer save */}
       {savedGame && (

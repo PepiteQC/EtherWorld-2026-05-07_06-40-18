@@ -5,6 +5,13 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 
+// ═══════════════════════════════════════════════════════════════
+// NON-INTRUSIVE INTEGRATION — new modular buildings (feature-flagged)
+// Old hotel-ultra / DepanneurCoucheTard / legacy HotelBuilding/Depanneur remain 100% untouched.
+// Per "Plan directeur" + "Principes anti-casse": progressive layering only.
+// ═══════════════════════════════════════════════════════════════
+import { BuildingsScene, isHotelEnabled, isDepanneurEnabled } from '../../buildings'
+
 // ════════════════════════════════════════════════════════════════════════════
 // CONSTANTES GLOBALES
 // ════════════════════════════════════════════════════════════════════════════
@@ -614,8 +621,46 @@ export function CityScene({ timeOfDay = 20, onEnterHotel, onEnterDepanneur }: Ci
       <Ground timeOfDay={timeOfDay} />
       <UrbanGrid timeOfDay={timeOfDay} />
       <CentralPark position={[0, 0.2, 0]} timeOfDay={timeOfDay} />
+
+      {/* ═══════════════════════════════════════════════════════════════
+          LEGACY BUILDINGS — remain 100% untouched (hotel-ultra + DepanneurCoucheTard)
+          New modular architecture is layered on top via feature flags only.
+          Per "Principes anti-casse" + "Plan directeur": zero deletion, progressive integration.
+          ═══════════════════════════════════════════════════════════════ */}
       <HotelBuilding position={[0, 0.2, -SPACING]} onEnter={onEnterHotel} timeOfDay={timeOfDay} />
       <Depanneur position={[-SPACING, 0.2, 0]} onEnter={onEnterDepanneur} timeOfDay={timeOfDay} />
+
+      {/* ═══════════════════════════════════════════════════════════════
+          NEW MODULAR HÔTEL + DÉPANNEUR (src/buildings/)
+          - Gated by featureFlags (all OFF by default)
+          - Separate origin, logic, IDs, collections
+          - Reusable modules + exact 30-room registry
+          - Simulator-only locks (never browser → hardware)
+          - Non-intrusive: renders nothing when flags false
+          Exact paths created this session:
+            /home/user/etherworld/src/buildings/shared/featureFlags.ts
+            /home/user/etherworld/src/buildings/shared/types.ts
+            /home/user/etherworld/src/buildings/hotel/core/HotelRegistry.ts
+            /home/user/etherworld/src/buildings/hotel/modules/room/HotelRoomModule.tsx
+            /home/user/etherworld/src/buildings/hotel/modules/floor/HotelFloorModule.tsx
+            /home/user/etherworld/src/buildings/hotel/scenes/HotelScene.tsx
+            /home/user/etherworld/src/buildings/depanneur/core/DepanneurRegistry.ts
+            /home/user/etherworld/src/buildings/depanneur/scenes/DepanneurScene.tsx
+            /home/user/etherworld/src/buildings/BuildingsScene.tsx
+            /home/user/etherworld/src/buildings/index.ts
+            /home/user/etherworld/src/buildings/firebase/collections.ts
+            /home/user/etherworld/src/systems/access-control/core/AccessControlTypes.ts
+            /home/user/etherworld/src/systems/access-control/simulator/LockSimulator.ts
+          ═══════════════════════════════════════════════════════════════ */}
+      <BuildingsScene
+        onHotelRoomDoorClick={(roomId) => {
+          // J5/J6 style — will be wired to InteractionSystem + LockSimulator later
+          console.log('%c[Buildings] Hotel room door clicked (simulator only):', 'color:#22c55e', roomId);
+        }}
+        onDepanneurEnter={() => {
+          console.log('%c[Buildings] Dépanneur enter (independent, simulator path)', 'color:#22c55e');
+        }}
+      />
 
       <GenericBuilding position={[SPACING, 0.2, 0]} size={[15, 22, 12]} color="#2a3a4e" name="HÔPITAL" windowRows={6} windowCols={4} style="office" timeOfDay={timeOfDay} />
       <GenericBuilding position={[0, 0.2, SPACING]} size={[18, 28, 14]} color="#3a2828" name="CATHÉDRALE" windowRows={5} windowCols={3} style="residential" timeOfDay={timeOfDay} />
