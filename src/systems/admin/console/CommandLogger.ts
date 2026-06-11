@@ -1,292 +1,298 @@
 /**
- * CommandLogger.ts - Système de logging et audit des commandes admin
- * Sauvegarde les commandes exécutées pour audit/sécurité
+ * CommandLogger.ts
+ * ----------------------------------------------------------------------------
+ * Journalisation complète des commandes admin (audit trail).
+ *
+ *  - Interface CommandLog avec tous les champs
+ *  - Filtres avancés (adminId, commandName, date, target, success)
+ *  - getLogs(), getRecentLogs(), getAdminLogs(), getCommandLogs()
+ *  - getPlayerLogs() pour l'audit d'un joueur
+ *  - exportLogs() (JSON) + exportLogsCSV()
+ *  - getStats() avec statistiques
+ *  - generateReport() formaté
+ *  - onCommandLogged() callbacks (unsubscribe-able)
+ *  - clearLogs() / clearOldLogs()
+ *  - Limite : 10 000 logs max
+ * ----------------------------------------------------------------------------
  */
 
-import { CommandContext } from './CommandParser';
-
+/** Entrée unique du journal. */
 export interface CommandLog {
   id: string;
-  commandName: string;
-  fullCommand: string;
+  timestamp: number;
+  /** ISO 8601 pour lecture humaine. */
+  isoTime: string;
   adminId: string;
   adminName: string;
-  adminLevel: number;
-  args: any[];
-  result: {
-    success: boolean;
-    message: string;
-  };
-  timestamp: number;
-  ip?: string;
-  duration: number; // en ms
-  target?: string; // ID du joueur affecté, si applicable
-  affectedPlayers?: string[]; // Liste des joueurs affectés
+  commandName: string;
+  /** Ligne brute saisie. */
+  rawCommand: string;
+  /** Cible affectée (joueur, etc.) si applicable. */
+  target?: string;
+  success: boolean;
+  message: string;
+  /** Données structurées additionnelles. */
+  data?: Record<string, any>;
 }
 
-export interface AuditFilter {
+export interface LogFilter {
   adminId?: string;
   commandName?: string;
-  startTime?: number;
-  endTime?: number;
-  success?: boolean;
   target?: string;
+  success?: boolean;
+  /** Bornes temporelles (timestamps ms). */
+  from?: number;
+  to?: number;
 }
 
-/**
- * Gestionnaire de logs des commandes admin
- */
+export interface LogStats {
+  total: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+  byCommand: Record<string, number>;
+  byAdmin: Record<string, number>;
+  firstLog?: number;
+  lastLog?: number;
+}
+
+export type LogListener = (log: CommandLog) => void;
+
 export class CommandLogger {
   private logs: CommandLog[] = [];
-  private maxLogs = 10000;
-  private logCallbacks: Array<(log: CommandLog) => void> = [];
+  private listeners = new Set<LogListener>();
+  private readonly limit: number;
+  private seq = 0;
 
-  /**
-   * Enregistrer une commande exécutée
-   */
-  logCommand(
-    commandName: string,
-    fullCommand: string,
-    context: CommandContext,
-    args: any[],
-    result: { success: boolean; message: string },
-    duration: number,
-    target?: string
-  ): CommandLog {
-    const log: CommandLog = {
-      id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      commandName,
-      fullCommand,
-      adminId: context.player.id,
-      adminName: context.player.name,
-      adminLevel: context.player.permissionLevel,
-      args,
-      result,
-      timestamp: context.timestamp,
-      duration,
-      target,
+  constructor(options?: { limit?: number }) {
+    this.limit = options?.limit ?? 10_000;
+  }
+
+  // --------------------------------------------------------------------- //
+  //  Écriture
+  // --------------------------------------------------------------------- //
+
+  log(entry: Omit<CommandLog, "id" | "timestamp" | "isoTime">): CommandLog {
+    const timestamp = Date.now();
+    const full: CommandLog = {
+      ...entry,
+      id: `log_${timestamp}_${this.seq++}`,
+      timestamp,
+      isoTime: new Date(timestamp).toISOString(),
     };
 
-    this.logs.push(log);
+    this.logs.push(full);
 
-    // Limiter la taille
-    if (this.logs.length > this.maxLogs) {
-      this.logs = this.logs.slice(-this.maxLogs);
+    // Respect de la limite (FIFO).
+    if (this.logs.length > this.limit) {
+      this.logs.splice(0, this.logs.length - this.limit);
     }
 
-    // Appeler les callbacks
-    this.logCallbacks.forEach((cb) => cb(log));
+    // Notifie les abonnés (sans casser le flux si l'un lève une erreur).
+    for (const listener of this.listeners) {
+      try {
+        listener(full);
+      } catch {
+        /* listener défaillant ignoré */
+      }
+    }
 
-    return log;
+    return full;
   }
 
   /**
-   * Obtenir les logs selon un filtre
+   * Insère un log déjà constitué (ex: rechargé depuis le storage / un backup),
+   * sans régénérer son id ni notifier les listeners. Respecte la limite.
    */
-  getLogs(filter?: AuditFilter): CommandLog[] {
-    return this.logs.filter((log) => {
-      if (filter?.adminId && log.adminId !== filter.adminId) return false;
-      if (filter?.commandName && log.commandName !== filter.commandName) return false;
-      if (
-        filter?.startTime &&
-        log.timestamp < filter.startTime
-      )
-        return false;
-      if (filter?.endTime && log.timestamp > filter.endTime) return false;
-      if (
-        filter?.success !== undefined &&
-        log.result.success !== filter.success
-      )
-        return false;
-      if (filter?.target && log.target !== filter.target) return false;
+  ingest(log: CommandLog): void {
+    this.logs.push(log);
+    if (this.logs.length > this.limit) {
+      this.logs.splice(0, this.logs.length - this.limit);
+    }
+  }
 
+  // --------------------------------------------------------------------- //
+  //  Lecture / filtres
+  // --------------------------------------------------------------------- //
+
+  getLogs(filter?: LogFilter): CommandLog[] {
+    if (!filter) return [...this.logs];
+    return this.logs.filter((l) => {
+      if (filter.adminId && l.adminId !== filter.adminId) return false;
+      if (
+        filter.commandName &&
+        l.commandName.toLowerCase() !== filter.commandName.toLowerCase()
+      )
+        return false;
+      if (filter.target && l.target !== filter.target) return false;
+      if (filter.success !== undefined && l.success !== filter.success) return false;
+      if (filter.from !== undefined && l.timestamp < filter.from) return false;
+      if (filter.to !== undefined && l.timestamp > filter.to) return false;
       return true;
     });
   }
 
-  /**
-   * Obtenir les logs récents
-   */
-  getRecentLogs(count: number = 50): CommandLog[] {
-    return this.logs.slice(-count);
+  /** Les N logs les plus récents (par défaut 50). */
+  getRecentLogs(count = 50): CommandLog[] {
+    return this.logs.slice(-count).reverse();
   }
 
-  /**
-   * Obtenir les logs d'un admin
-   */
-  getAdminLogs(adminId: string, limit?: number): CommandLog[] {
-    const logs = this.logs.filter((log) => log.adminId === adminId);
-    return limit ? logs.slice(-limit) : logs;
+  /** Logs d'un admin donné. */
+  getAdminLogs(adminId: string): CommandLog[] {
+    return this.getLogs({ adminId });
   }
 
-  /**
-   * Obtenir les commandes d'un type
-   */
-  getCommandLogs(commandName: string, limit?: number): CommandLog[] {
-    const logs = this.logs.filter((log) => log.commandName === commandName);
-    return limit ? logs.slice(-limit) : logs;
+  /** Logs d'une commande donnée. */
+  getCommandLogs(commandName: string): CommandLog[] {
+    return this.getLogs({ commandName });
   }
 
-  /**
-   * Obtenir les logs affectant un joueur
-   */
-  getPlayerLogs(playerId: string): CommandLog[] {
-    return this.logs.filter((log) => log.target === playerId);
-  }
-
-  /**
-   * Enregistrer un callback pour chaque nouvelle commande
-   */
-  onCommandLogged(callback: (log: CommandLog) => void): () => void {
-    this.logCallbacks.push(callback);
-    // Retourner une fonction pour unsubscribe
-    return () => {
-      const index = this.logCallbacks.indexOf(callback);
-      if (index > -1) this.logCallbacks.splice(index, 1);
-    };
-  }
-
-  /**
-   * Exporter les logs en JSON
-   */
-  exportLogs(filter?: AuditFilter): string {
-    const data = this.getLogs(filter);
-    return JSON.stringify(data, null, 2);
-  }
-
-  /**
-   * Exporter les logs en CSV
-   */
-  exportLogsCSV(filter?: AuditFilter): string {
-    const data = this.getLogs(filter);
-    if (data.length === 0) return '';
-
-    const headers = [
-      'ID',
-      'Command',
-      'Admin',
-      'Admin Level',
-      'Target',
-      'Success',
-      'Message',
-      'Timestamp',
-      'Duration (ms)',
-    ];
-
-    const rows = data.map((log) => [
-      log.id,
-      log.commandName,
-      log.adminName,
-      log.adminLevel,
-      log.target || '-',
-      log.result.success ? 'YES' : 'NO',
-      `"${log.result.message.replace(/"/g, '""')}"`,
-      new Date(log.timestamp).toISOString(),
-      log.duration,
-    ]);
-
-    return (
-      [headers, ...rows].map((row) => row.join(',')).join('\n') + '\n'
+  /** Logs concernant un joueur ciblé (audit joueur). */
+  getPlayerLogs(playerNameOrId: string): CommandLog[] {
+    return this.logs.filter(
+      (l) =>
+        l.target === playerNameOrId ||
+        l.data?.targetId === playerNameOrId ||
+        l.data?.targetName === playerNameOrId
     );
   }
 
-  /**
-   * Obtenir les statistiques des logs
-   */
-  getStats(): {
-    totalLogs: number;
-    successfulCommands: number;
-    failedCommands: number;
-    uniqueAdmins: number;
-    mostUsedCommand: string | null;
-    averageCommandDuration: number;
-  } {
-    const successful = this.logs.filter((l) => l.result.success).length;
-    const failed = this.logs.length - successful;
-    const uniqueAdmins = new Set(this.logs.map((l) => l.adminId)).size;
+  // --------------------------------------------------------------------- //
+  //  Export
+  // --------------------------------------------------------------------- //
 
-    const commandCounts = new Map<string, number>();
-    this.logs.forEach((log) => {
-      commandCounts.set(log.commandName, (commandCounts.get(log.commandName) || 0) + 1);
-    });
+  /** Export JSON (string formaté). */
+  exportLogs(filter?: LogFilter): string {
+    return JSON.stringify(this.getLogs(filter), null, 2);
+  }
 
-    let mostUsedCommand: string | null = null;
-    let maxCount = 0;
-    commandCounts.forEach((count, cmd) => {
-      if (count > maxCount) {
-        maxCount = count;
-        mostUsedCommand = cmd;
-      }
-    });
+  /** Export CSV (échappement correct des champs). */
+  exportLogsCSV(filter?: LogFilter): string {
+    const rows = this.getLogs(filter);
+    const headers = [
+      "id",
+      "isoTime",
+      "adminId",
+      "adminName",
+      "commandName",
+      "target",
+      "success",
+      "message",
+      "rawCommand",
+    ];
+    const escape = (v: unknown): string => {
+      const s = v === undefined || v === null ? "" : String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const lines = [headers.join(",")];
+    for (const l of rows) {
+      lines.push(
+        [
+          l.id,
+          l.isoTime,
+          l.adminId,
+          l.adminName,
+          l.commandName,
+          l.target ?? "",
+          l.success,
+          l.message,
+          l.rawCommand,
+        ]
+          .map(escape)
+          .join(",")
+      );
+    }
+    return lines.join("\n");
+  }
 
-    const averageDuration =
-      this.logs.length > 0
-        ? this.logs.reduce((sum, log) => sum + log.duration, 0) /
-          this.logs.length
-        : 0;
+  // --------------------------------------------------------------------- //
+  //  Statistiques / rapport
+  // --------------------------------------------------------------------- //
+
+  getStats(filter?: LogFilter): LogStats {
+    const logs = this.getLogs(filter);
+    const byCommand: Record<string, number> = {};
+    const byAdmin: Record<string, number> = {};
+    let successCount = 0;
+
+    for (const l of logs) {
+      byCommand[l.commandName] = (byCommand[l.commandName] ?? 0) + 1;
+      byAdmin[l.adminName] = (byAdmin[l.adminName] ?? 0) + 1;
+      if (l.success) successCount++;
+    }
 
     return {
-      totalLogs: this.logs.length,
-      successfulCommands: successful,
-      failedCommands: failed,
-      uniqueAdmins,
-      mostUsedCommand,
-      averageCommandDuration,
+      total: logs.length,
+      successCount,
+      failureCount: logs.length - successCount,
+      successRate: logs.length ? successCount / logs.length : 0,
+      byCommand,
+      byAdmin,
+      firstLog: logs[0]?.timestamp,
+      lastLog: logs[logs.length - 1]?.timestamp,
     };
   }
 
-  /**
-   * Nettoyer les logs (par sécurité)
-   */
+  /** Rapport textuel formaté, lisible dans la console. */
+  generateReport(filter?: LogFilter): string {
+    const stats = this.getStats(filter);
+    const lines: string[] = [];
+    lines.push("=== RAPPORT CONSOLE ADMIN ===");
+    lines.push(`Généré le        : ${new Date().toISOString()}`);
+    lines.push(`Total de logs    : ${stats.total}`);
+    lines.push(`Succès           : ${stats.successCount}`);
+    lines.push(`Échecs           : ${stats.failureCount}`);
+    lines.push(`Taux de succès   : ${(stats.successRate * 100).toFixed(1)}%`);
+    if (stats.firstLog)
+      lines.push(`Premier log      : ${new Date(stats.firstLog).toISOString()}`);
+    if (stats.lastLog)
+      lines.push(`Dernier log      : ${new Date(stats.lastLog).toISOString()}`);
+
+    lines.push("");
+    lines.push("--- Commandes les plus utilisées ---");
+    for (const [name, n] of Object.entries(stats.byCommand).sort((a, b) => b[1] - a[1])) {
+      lines.push(`  ${name.padEnd(16)} ${n}`);
+    }
+
+    lines.push("");
+    lines.push("--- Activité par admin ---");
+    for (const [name, n] of Object.entries(stats.byAdmin).sort((a, b) => b[1] - a[1])) {
+      lines.push(`  ${name.padEnd(16)} ${n}`);
+    }
+
+    return lines.join("\n");
+  }
+
+  // --------------------------------------------------------------------- //
+  //  Callbacks
+  // --------------------------------------------------------------------- //
+
+  /** Abonne un listener. Retourne une fonction de désinscription. */
+  onCommandLogged(listener: LogListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  // --------------------------------------------------------------------- //
+  //  Nettoyage
+  // --------------------------------------------------------------------- //
+
   clearLogs(): void {
     this.logs = [];
   }
 
-  /**
-   * Nettoyer les logs anciens
-   */
-  clearOldLogs(olderThan: number): void {
-    const cutoffTime = Date.now() - olderThan;
-    this.logs = this.logs.filter((log) => log.timestamp > cutoffTime);
+  /** Supprime les logs plus vieux que maxAgeMs. Retourne le nombre supprimé. */
+  clearOldLogs(maxAgeMs: number): number {
+    const cutoff = Date.now() - maxAgeMs;
+    const before = this.logs.length;
+    this.logs = this.logs.filter((l) => l.timestamp >= cutoff);
+    return before - this.logs.length;
   }
 
-  /**
-   * Générer un rapport formaté
-   */
-  generateReport(
-    title: string = 'Rapport des commandes admin',
-    filter?: AuditFilter
-  ): string {
-    const logs = this.getLogs(filter);
-    const stats = this.getStats();
-
-    let report = `
-╔════════════════════════════════════════════════════════════╗
-║  ${title.padEnd(56)}║
-╚════════════════════════════════════════════════════════════╝
-
-Statistiques Globales:
-  • Nombre total de commandes: ${stats.totalLogs}
-  • Commandes réussies: ${stats.successfulCommands}
-  • Commandes échouées: ${stats.failedCommands}
-  • Admins uniques: ${stats.uniqueAdmins}
-  • Commande la plus utilisée: ${stats.mostUsedCommand || 'N/A'}
-  • Durée moyenne: ${stats.averageCommandDuration.toFixed(2)}ms
-
-Dernières Commandes:
-`;
-
-    logs.slice(-10).forEach((log) => {
-      report += `
-  [${new Date(log.timestamp).toLocaleTimeString()}] 
-  Admin: ${log.adminName} (Level ${log.adminLevel})
-  Commande: /${log.commandName}
-  Cible: ${log.target || 'Serveur'}
-  Résultat: ${log.result.success ? '✓' : '✗'} ${log.result.message}`;
-    });
-
-    return report;
+  get count(): number {
+    return this.logs.length;
   }
 }
 
 export default CommandLogger;
+

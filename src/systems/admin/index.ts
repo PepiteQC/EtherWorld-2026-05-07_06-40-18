@@ -1,39 +1,20 @@
 /**
- * index.ts - Console Admin System
- * Export principal du système de console admin
+ * Module "commandes avancées" : régions, world-edit, économie poussée.
  */
+export { RegionSystem } from "./RegionSystem";
+export type { Region, RegionFlag, RegionState, Vec3 } from "./RegionSystem";
 
-// Core
-export { CommandParser, CommandArgument, CommandDefinition, CommandContext, ParsedCommand } from './console/CommandParser';
-export { CommandLogger, CommandLog, AuditFilter } from './console/CommandLogger';
-export { AdminConsoleManager } from './console/AdminConsoleManager';
-export { AdminConsoleUI, useAdminConsole } from './console/AdminConsoleUI';
+export { EconomySystem } from "./EconomySystem";
+export type {
+  Account,
+  Transaction,
+  TxType,
+  EconomyState,
+  EconomyOptions,
+} from "./EconomySystem";
 
-// Permissions
-export {
-  PermissionSystem,
-  PermissionLevel,
-  AdminUser,
-  AdminFlag,
-} from '../admin/permissions/PermissionSystem';
+export { WorldEditManager, WorldEditSession } from "./WorldEditSystem";
+export type { WorldAdapter } from "./WorldEditSystem";
 
-// Commands
-export {
-  ModerationCommands,
-  TeleportCommands,
-  PlayerCommands,
-  ServerCommands,
-  EconomyCommands,
-  HelpCommands,
-  AllCommands,
-} from '../admin/commands/StandardCommands';
-
-// Re-export principal pour usage simple
-export default {
-  AdminConsoleManager,
-  AdminConsoleUI,
-  useAdminConsole,
-  CommandParser,
-  PermissionSystem,
-  CommandLogger,
-};
+export { createAdvancedCommands } from "./AdvancedCommands";
+export type { AdvancedSystems } from "./AdvancedCommands";

@@ -1,267 +1,309 @@
 /**
- * AdminConsoleUI.tsx - Interface console admin in-game
- * Similaire à la console FiveM mais pour EtherWorld RP
+ * AdminConsoleUI.tsx
+ * ----------------------------------------------------------------------------
+ * Interface terminal sombre pour la console admin (React + Tailwind).
+ *
+ *  - Champ de saisie auto-focus
+ *  - Messages de sortie colorés (success / error / warn / info / input)
+ *  - Scroll automatique vers le bas
+ *  - Contrôles clavier :
+ *      ENTER = exécuter
+ *      ESC   = fermer
+ *      UP    = historique précédent
+ *      DOWN  = historique suivant
+ *  - Boutons Minimize / Maximize / Close
+ *  - Hook useAdminConsole (état isOpen, output, exécution)
+ *  - Compteur de commandes
+ * ----------------------------------------------------------------------------
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ChevronRight, X, Maximize2, Minimize2 } from 'lucide-react';
-import { CommandParser, CommandContext } from '../console/CommandParser';
-import { PermissionSystem } from '../permissions/PermissionSystem';
-import { AllCommands } from '../commands/StandardCommands';
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-interface ConsoleMessage {
-  type: 'input' | 'output' | 'error' | 'info' | 'success' | 'warn';
+export type ConsoleLineType =
+  | "input"
+  | "success"
+  | "error"
+  | "warn"
+  | "info"
+  | "system";
+
+export interface ConsoleLine {
+  id: number;
+  type: ConsoleLineType;
   text: string;
-  timestamp: number;
-  command?: string;
+  time: number;
 }
 
-interface AdminConsoleUIProps {
-  isOpen: boolean;
-  onClose: () => void;
-  playerId: string;
-  playerName: string;
-  permissionLevel: number;
-  onCommand?: (command: string, result: any) => void;
+/** Fonction d'exécution attendue (fournie par le jeu / manager). */
+export type CommandExecutor = (
+  raw: string
+) => Promise<{ success: boolean; message: string }>;
+
+export interface UseAdminConsoleOptions {
+  onCommand: CommandExecutor;
+  /** Navigation historique (optionnelle). */
+  getHistoryPrevious?: () => string | null;
+  getHistoryNext?: () => string | null;
+  /**
+   * Autocomplétion (TAB). Reçoit l'entrée courante, retourne la nouvelle
+   * entrée + d'éventuelles suggestions à afficher.
+   */
+  onComplete?: (input: string) => {
+    input: string;
+    suggestions: string[];
+    hint: string;
+  };
+  /** Lignes de bienvenue. */
+  welcome?: string[];
 }
 
-/**
- * Composant console admin
- */
-export const AdminConsoleUI: React.FC<AdminConsoleUIProps> = ({
-  isOpen,
-  onClose,
-  playerId,
-  playerName,
-  permissionLevel,
-  onCommand,
-}) => {
-  const [messages, setMessages] = useState<ConsoleMessage[]>([]);
-  const [input, setInput] = useState('');
+let _lineSeq = 0;
+
+/** Hook gérant l'état de la console (ouverture, sortie, exécution). */
+export function useAdminConsole(options: UseAdminConsoleOptions) {
+  const { onCommand, getHistoryPrevious, getHistoryNext, onComplete, welcome } = options;
+
+  const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [lines, setLines] = useState<ConsoleLine[]>(() =>
+    (welcome ?? [
+      "╔══════════════════════════════════╗",
+      "║   CONSOLE ADMIN — EtherWorld      ║",
+      "╚══════════════════════════════════╝",
+      'Tapez "help" pour la liste des commandes.',
+    ]).map((text) => ({
+      id: _lineSeq++,
+      type: "system" as ConsoleLineType,
+      text,
+      time: Date.now(),
+    }))
+  );
+  const [commandCount, setCommandCount] = useState(0);
 
-  const parserRef = useRef(new CommandParser());
-  const permissionSystemRef = useRef(new PermissionSystem());
-
-  // Initialiser le parser avec les commandes
-  useEffect(() => {
-    parserRef.current.registerCommands(AllCommands);
+  const pushLine = useCallback((type: ConsoleLineType, text: string) => {
+    setLines((prev) => [
+      ...prev,
+      ...text.split("\n").map((t) => ({
+        id: _lineSeq++,
+        type,
+        text: t,
+        time: Date.now(),
+      })),
+    ]);
   }, []);
 
-  // Auto-scroll vers le bas
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Focus sur l'input quand la console s'ouvre
-  useEffect(() => {
-    if (isOpen && !isMinimized) {
-      inputRef.current?.focus();
-    }
-  }, [isOpen, isMinimized]);
-
-  // Ajouter un message à la console
-  const addMessage = useCallback((message: ConsoleMessage) => {
-    setMessages((prev) => [...prev, message]);
+  const open = useCallback(() => {
+    setIsOpen(true);
+    setIsMinimized(false);
   }, []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const toggle = useCallback(() => setIsOpen((v) => !v), []);
+  const clear = useCallback(() => setLines([]), []);
 
-  // Exécuter une commande
-  const executeCommand = useCallback(
-    async (commandText: string) => {
-      if (!commandText.trim()) return;
+  const run = useCallback(
+    async (raw: string) => {
+      const value = raw.trim();
+      if (!value) return;
+      pushLine("input", `> ${value}`);
+      setCommandCount((c) => c + 1);
 
-      // Ajouter l'input à la console
-      addMessage({
-        type: 'input',
-        text: `> ${commandText}`,
-        timestamp: Date.now(),
-        command: commandText,
-      });
-
-      // Préparer le contexte
-      const context: CommandContext = {
-        player: {
-          id: playerId,
-          name: playerName,
-          permissionLevel,
-        },
-        timestamp: Date.now(),
-        source: 'in-game',
-      };
-
-      // Exécuter la commande
-      const result = await parserRef.current.executeCommand(commandText, context);
-
-      // Ajouter le résultat
-      addMessage({
-        type: result.success ? 'success' : 'error',
-        text: result.message,
-        timestamp: Date.now(),
-        command: commandText,
-      });
-
-      // Callback optionnel
-      if (onCommand) {
-        onCommand(commandText, result);
+      // Commandes locales rapides.
+      if (value === "clear" || value === "cls") {
+        clear();
+        return;
       }
 
-      // Vider l'input
-      setInput('');
+      try {
+        const res = await onCommand(value);
+        pushLine(res.success ? "success" : "error", res.message);
+      } catch (err) {
+        pushLine("error", err instanceof Error ? err.message : "Erreur inconnue.");
+      }
     },
-    [playerId, playerName, permissionLevel, addMessage, onCommand]
+    [onCommand, pushLine, clear]
   );
 
-  // Gérer les touches clavier
+  return {
+    isOpen,
+    isMinimized,
+    lines,
+    commandCount,
+    open,
+    close,
+    toggle,
+    clear,
+    run,
+    pushLine,
+    setIsMinimized,
+    getHistoryPrevious,
+    getHistoryNext,
+    onComplete,
+  };
+}
+
+const LINE_COLORS: Record<ConsoleLineType, string> = {
+  input: "text-cyan-300",
+  success: "text-green-400",
+  error: "text-red-400",
+  warn: "text-yellow-400",
+  info: "text-blue-300",
+  system: "text-zinc-500",
+};
+
+export interface AdminConsoleUIProps {
+  console: ReturnType<typeof useAdminConsole>;
+  /** Touche(s) globales d'ouverture déjà gérées en amont ? */
+  title?: string;
+}
+
+/** Composant d'affichage de la console. */
+export const AdminConsoleUI: React.FC<AdminConsoleUIProps> = ({
+  console: c,
+  title = "ADMIN CONSOLE",
+}) => {
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll vers le bas à chaque nouvelle ligne.
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [c.lines]);
+
+  // Auto-focus à l'ouverture.
+  useEffect(() => {
+    if (c.isOpen && !c.isMinimized) {
+      const t = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [c.isOpen, c.isMinimized]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      executeCommand(input);
-    } else if (e.key === 'Escape') {
-      onClose();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      const prev = parserRef.current.getHistoryPrevious();
-      if (prev) setInput(prev);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      const next = parserRef.current.getHistoryNext();
-      if (next !== null) setInput(next);
+    switch (e.key) {
+      case "Enter": {
+        e.preventDefault();
+        const value = input;
+        setInput("");
+        void c.run(value);
+        break;
+      }
+      case "Escape": {
+        e.preventDefault();
+        c.close();
+        break;
+      }
+      case "ArrowUp": {
+        e.preventDefault();
+        const prev = c.getHistoryPrevious?.();
+        if (prev != null) setInput(prev);
+        break;
+      }
+      case "ArrowDown": {
+        e.preventDefault();
+        const next = c.getHistoryNext?.();
+        if (next != null) setInput(next);
+        break;
+      }
+      case "Tab": {
+        e.preventDefault();
+        if (c.onComplete) {
+          const res = c.onComplete(input);
+          setInput(res.input);
+          // Affiche les suggestions multiples + le hint dans la sortie.
+          if (res.suggestions.length > 1) {
+            c.pushLine("system", res.suggestions.join("   "));
+          }
+          if (res.hint) c.pushLine("info", res.hint);
+        }
+        break;
+      }
     }
   };
 
-  // Obtenir la couleur du message
-  const getMessageColor = (type: ConsoleMessage['type']) => {
-    switch (type) {
-      case 'input':
-        return 'text-gray-400';
-      case 'success':
-        return 'text-green-400';
-      case 'error':
-        return 'text-red-400';
-      case 'warn':
-        return 'text-yellow-400';
-      case 'info':
-        return 'text-blue-400';
-      default:
-        return 'text-white';
-    }
-  };
-
-  if (!isOpen) return null;
+  if (!c.isOpen) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-black bg-opacity-95 border-t-2 border-green-500 font-mono">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 bg-gray-900 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <span className="text-green-500 text-sm font-bold">CONSOLE ADMIN</span>
-          <span className="text-gray-500 text-xs">
-            {playerName} [{permissionLevel}]
+    <div
+      className="fixed bottom-4 right-4 z-[9999] flex flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/95 font-mono text-sm shadow-2xl shadow-black/60 backdrop-blur"
+      style={{
+        width: c.isMinimized ? 280 : 640,
+        height: c.isMinimized ? 44 : 420,
+        transition: "width 0.15s ease, height 0.15s ease",
+      }}
+    >
+      {/* Barre de titre */}
+      <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-3 py-2 select-none">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_6px] shadow-green-500" />
+          <span className="font-semibold tracking-wider text-zinc-200">
+            {title}
+          </span>
+          <span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+            {c.commandCount} cmd
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="text-gray-400 hover:text-white transition p-1"
-            title={isMinimized ? 'Restaurer' : 'Minimiser'}
+            type="button"
+            onClick={() => c.setIsMinimized(!c.isMinimized)}
+            className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-700 hover:text-white"
+            title={c.isMinimized ? "Maximiser" : "Minimiser"}
           >
-            {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+            {c.isMinimized ? "▢" : "—"}
           </button>
           <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition p-1"
-            title="Fermer"
+            type="button"
+            onClick={c.close}
+            className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 hover:bg-red-600 hover:text-white"
+            title="Fermer (ESC)"
           >
-            <X size={16} />
+            ✕
           </button>
         </div>
       </div>
 
-      {/* Console Content */}
-      {!isMinimized && (
+      {!c.isMinimized && (
         <>
-          {/* Messages Area */}
-          <div className="h-64 overflow-y-auto bg-black p-3 space-y-1 text-sm">
-            {messages.length === 0 ? (
-              <div className="text-gray-600 italic">
-                Console admin chargée. Tapez /help pour les commandes disponibles.
+          {/* Sortie */}
+          <div
+            ref={outputRef}
+            className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 leading-relaxed"
+          >
+            {c.lines.map((line) => (
+              <div
+                key={line.id}
+                className={`whitespace-pre-wrap break-words ${LINE_COLORS[line.type]}`}
+              >
+                {line.text}
               </div>
-            ) : (
-              messages.map((msg, idx) => (
-                <div key={idx} className={`${getMessageColor(msg.type)}`}>
-                  {msg.text}
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
+            ))}
           </div>
 
-          {/* Input Area */}
-          <div className="bg-gray-900 border-t border-gray-700 p-3 flex items-center gap-2">
-            <ChevronRight size={16} className="text-green-500 flex-shrink-0" />
+          {/* Saisie */}
+          <div className="flex items-center gap-2 border-t border-zinc-800 bg-zinc-900 px-3 py-2">
+            <span className="text-green-400">$</span>
             <input
               ref={inputRef}
-              type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Entrez une commande..."
-              className="flex-1 bg-transparent text-white outline-none text-sm"
+              spellCheck={false}
               autoComplete="off"
+              placeholder="Tapez une commande... (help)"
+              className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-600 outline-none"
             />
-          </div>
-
-          {/* Quick Help */}
-          <div className="bg-gray-950 border-t border-gray-700 px-3 py-2 text-xs text-gray-500 flex justify-between">
-            <div>ESC = Fermer | ↑↓ = Historique | /help = Aide</div>
-            <div>{messages.length} messages</div>
           </div>
         </>
       )}
-
-      {/* Minimized State */}
-      {isMinimized && (
-        <div className="bg-gray-900 p-2 border-t border-gray-700 flex items-center justify-between">
-          <span className="text-gray-500 text-xs">Console minimisée</span>
-          <button
-            onClick={() => setIsMinimized(false)}
-            className="text-gray-400 hover:text-white transition"
-          >
-            <Maximize2 size={14} />
-          </button>
-        </div>
-      )}
     </div>
   );
-};
-
-/**
- * Hook pour utiliser la console admin
- */
-export const useAdminConsole = (playerId: string, playerName: string, permissionLevel: number) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ouvrir la console avec "/" ou "F8" (comme FiveM)
-      if ((e.key === '/' || e.key === 'F8') && !isOpen) {
-        e.preventDefault();
-        setIsOpen(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
-
-  return {
-    isOpen,
-    setIsOpen,
-    close: () => setIsOpen(false),
-    open: () => setIsOpen(true),
-  };
 };
 
 export default AdminConsoleUI;
