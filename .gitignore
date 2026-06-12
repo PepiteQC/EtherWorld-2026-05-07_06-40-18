@@ -1,36 +1,22 @@
-# ── Build ──
-dist/
-dist-ssr/
-
-# ── Dépendances ──
-node_modules/
-
-# ── Environnement — NE JAMAIS COMMITER ──
-.env.local
-.env.*.local
-.env.production.local
-.env.staging.local
-
-# ── Logs ──
-logs/
-*.log
-npm-debug.log*
-
-# ── OS ──
+.claude/
 .DS_Store
-Thumbs.db
-desktop.ini
+.idea/
+.project
+.puppeteer_profile/
+.vs/
+.vscode/
 
-# ── VS Code ──
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+*.swp
+npm-debug.log
 
-# ── TypeScript ──
-*.tsbuildinfo
+test/e2e/chromium
+test/e2e/output-screenshots
+test/treeshake/index.bundle.js
+test/treeshake/index.bundle.min.js
+test/treeshake/index.webgpu.bundle.js
+test/treeshake/index.webgpu.bundle.min.js
+test/treeshake/index.webgpu.nodes.bundle.js
+test/treeshake/index.webgpu.nodes.bundle.min.js
+test/unit/build
 
-# ── Cache Vite ──
-.vite/
-
-# ── Tests ──
-coverage/
+**/node_modules
