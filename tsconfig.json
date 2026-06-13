@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2020",
+    "ignoreDeprecations": "6.0",
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "allowJs": false,
@@ -26,7 +27,10 @@
       "@utils/*":      ["src/utils/*"],
       "@data/*":       ["src/data/*"],
       "@weapons/*":    ["src/weapons/*"],
-      "@pages/*":      ["src/pages/*"]
+      "@pages/*":      ["src/pages/*"],
+      "@systems/*":    ["src/systems/*"],
+      "@world/*":      ["src/world/*"],
+      "@buildings/*":  ["src/buildings/*"]
     }
   },
   "include": ["src"],
