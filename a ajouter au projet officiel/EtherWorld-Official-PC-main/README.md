@@ -1,2 +1,0 @@
-# EtherworldQC
-Initialisé le 06/07/2026 16:50:54

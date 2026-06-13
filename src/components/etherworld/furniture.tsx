@@ -794,7 +794,7 @@ export function CeilingLight({ position = [0, 0, 0] as [number, number, number] 
   )
 }
 
-export function NeonSign({ position = [0, 0, 0] as [number, number, number], text = "ETHER" }) {
+export function NeonSign({ position = [0, 0, 0] as [number, number, number], text = "ETHER", color = "#8b5cf6" }: { position?: [number, number, number]; text?: string; color?: string }) {
   const { lights } = useEtherWorldStore()
   const isOn = lights.neon?.isOn ?? true
   
@@ -822,3 +822,51 @@ export function NeonSign({ position = [0, 0, 0] as [number, number, number], tex
     </group>
   )
 }
+
+// Additional room furniture compatibility primitives.
+type FurnitureCompatProps = {
+  position?: [number, number, number]
+  rotation?: [number, number, number]
+  size?: number | [number, number] | [number, number, number]
+  width?: number
+  text?: string
+  color?: string
+}
+
+function CompatBox({ position = [0, 0, 0], rotation = [0, 0, 0], color = '#334155', size = [0.8, 0.8, 0.8] }: FurnitureCompatProps) {
+  const args = Array.isArray(size) ? (size.length === 2 ? [size[0], 0.08, size[1]] : size) : [size, size, size]
+  return (
+    <group position={position} rotation={rotation}>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={args as [number, number, number]} />
+        <meshStandardMaterial color={color} roughness={0.75} metalness={0.1} />
+      </mesh>
+    </group>
+  )
+}
+
+export const FloorLamp = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]}><mesh position={[0,0.75,0]}><cylinderGeometry args={[0.035,0.035,1.5,12]} /><meshStandardMaterial color="#64748b" metalness={0.6} /></mesh><mesh position={[0,1.55,0]}><sphereGeometry args={[0.18,16,16]} /><meshStandardMaterial color="#fde68a" emissive="#fde68a" emissiveIntensity={0.7} /></mesh><pointLight position={[0,1.6,0]} intensity={0.6} distance={4} /></group>
+export const DeskLamp = FloorLamp
+export const Bookshelf = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.9, 1.7, 0.28]} color="#3f2d20" />
+export const DiningTable = (props: FurnitureCompatProps) => <CompatBox {...props} size={[1.6, 0.12, 1]} color="#5b3a24" />
+export const KitchenIsland = (props: FurnitureCompatProps) => <CompatBox {...props} size={[1.8, 0.9, 0.8]} color="#475569" />
+export const Refrigerator = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.7, 1.8, 0.7]} color="#e5e7eb" />
+export const OvenStove = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.7, 0.9, 0.65]} color="#111827" />
+export const KitchenSink = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.7, 0.85, 0.55]} color="#cbd5e1" />
+export const BarStool = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]} rotation={props.rotation ?? [0,0,0]}><mesh position={[0,0.45,0]}><cylinderGeometry args={[0.18,0.18,0.08,16]} /><meshStandardMaterial color="#1f2937" /></mesh><mesh position={[0,0.22,0]}><cylinderGeometry args={[0.035,0.035,0.45,8]} /><meshStandardMaterial color="#64748b" metalness={0.8} /></mesh></group>
+export const WineRack = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.7, 0.8, 0.25]} color="#4c1d1d" />
+export const Dishwasher = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.65, 0.75, 0.6]} color="#94a3b8" />
+export const OutdoorLounge = (props: FurnitureCompatProps) => <CompatBox {...props} size={[1.8, 0.35, 0.8]} color="#334155" />
+export const HotTub = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]}><mesh position={[0,0.35,0]}><cylinderGeometry args={[0.8,0.8,0.45,32]} /><meshStandardMaterial color="#0f766e" /></mesh><pointLight position={[0,0.75,0]} color="#67e8f9" intensity={0.4} /></group>
+export const GardenTable = (props: FurnitureCompatProps) => <CompatBox {...props} size={[0.9, 0.08, 0.9]} color="#4b5563" />
+export const PottedTree = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]} scale={typeof props.size === 'number' ? props.size : 1}><mesh position={[0,0.25,0]}><cylinderGeometry args={[0.18,0.14,0.35,12]} /><meshStandardMaterial color="#78350f" /></mesh><mesh position={[0,1.0,0]}><sphereGeometry args={[0.45,16,16]} /><meshStandardMaterial color="#166534" /></mesh></group>
+export const FirePit = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]}><mesh><cylinderGeometry args={[0.45,0.45,0.15,24]} /><meshStandardMaterial color="#292524" /></mesh><pointLight position={[0,0.35,0]} color="#fb923c" intensity={0.8} distance={3} /></group>
+export const OutdoorLamp = FloorLamp
+export const BalconyRailing = (props: FurnitureCompatProps) => <CompatBox {...props} size={Array.isArray(props.size) ? [props.size[0], props.size[1] ?? 1, 0.08] : [2, 1, 0.08]} color="#94a3b8" />
+export const SunLounger = (props: FurnitureCompatProps) => <CompatBox {...props} size={[1.4, 0.18, 0.55]} color="#e2e8f0" />
+export const CandleSet = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]}>{[-0.08,0,0.08].map((x,i)=><mesh key={i} position={[x,0.08,0]}><cylinderGeometry args={[0.025,0.025,0.16,8]} /><meshStandardMaterial color="#fff7ed" emissive="#fdba74" emissiveIntensity={0.4} /></mesh>)}</group>
+export const Sculpture = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]} rotation={props.rotation ?? [0,0,0]}><mesh position={[0,0.35,0]}><torusKnotGeometry args={[0.18,0.05,48,8]} /><meshStandardMaterial color="#a78bfa" metalness={0.5} roughness={0.25} /></mesh></group>
+export const VaseFlowers = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]}><mesh position={[0,0.12,0]}><cylinderGeometry args={[0.09,0.12,0.24,12]} /><meshStandardMaterial color="#2563eb" /></mesh><mesh position={[0,0.35,0]}><sphereGeometry args={[0.16,12,12]} /><meshStandardMaterial color="#f472b6" /></mesh></group>
+export const Clock = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]} rotation={props.rotation ?? [0,0,0]}><mesh><circleGeometry args={[0.22,32]} /><meshStandardMaterial color="#f8fafc" /></mesh></group>
+export const Mirror = (props: FurnitureCompatProps) => <CompatBox {...props} size={Array.isArray(props.size) ? [props.size[0], props.size[1], 0.03] : [0.7, 1.2, 0.03]} color="#bae6fd" />
+export const CurtainSet = (props: FurnitureCompatProps) => <group position={props.position ?? [0,0,0]} rotation={props.rotation ?? [0,0,0]}><mesh position={[-(props.width ?? 2)/4,0,0]}><boxGeometry args={[(props.width ?? 2)/2,1.2,0.04]} /><meshStandardMaterial color="#312e81" /></mesh><mesh position={[(props.width ?? 2)/4,0,0]}><boxGeometry args={[(props.width ?? 2)/2,1.2,0.04]} /><meshStandardMaterial color="#312e81" /></mesh></group>

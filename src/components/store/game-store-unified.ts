@@ -14,7 +14,7 @@
  */
 
 import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/react'
+import { subscribeWithSelector } from 'zustand/middleware'
 import * as THREE from 'three'
 
 // ════════════════════════════════════════════════════════════════════════════════

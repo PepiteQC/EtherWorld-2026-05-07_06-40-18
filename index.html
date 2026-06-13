@@ -1,18 +1,171 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a1628" />
-    <meta name="description" content="EtherWorld QC RP — Jeu de rôle 3D au Québec" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="EtherWorld Official PC - Monde 3D immersif fusionné avec outils admin avancés, éditeur IA, météo complexe et Route 138 Québec" />
+    <meta name="keywords" content="three.js, etherworld, 3d game, quebec, admin tools, ai agent, weather system, editor, real-shit, fusion, route 138" />
+    <meta name="author" content="PepiteQC + Arena.ai" />
+    <meta name="theme-color" content="#0a0a0a" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://etherworld.dev/" />
+    <meta property="og:title" content="EtherWorld Official PC v2.0 - Fusion Réelle" />
+    <meta property="og:description" content="Le projet ultime : Three.js + Admin Tools + IA Agent + Météo Complexe + Route 138 Québec" />
+    <meta property="og:image" content="/og-image.png" />
 
-    <!-- Performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://etherworld.dev/" />
+    <meta property="twitter:title" content="EtherWorld Official PC v2.0" />
+    <meta property="twitter:description" content="Fusion complète Real-shit → Official PC" />
+    <meta property="twitter:image" content="/og-image.png" />
 
-    <title>EtherWorld QC RP</title>
+    <title>EtherWorld Official PC v2.0 | Fusion Enrichie</title>
+    
+    <!-- Preload critical assets -->
+    <link rel="preload" href="/assets/models/player.glb" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="/assets/textures/sky.hdr" as="fetch" crossorigin="anonymous" />
+    
+    <style>
+      :root {
+        --primary: #00f5ff;
+        --secondary: #ff00aa;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        color: #fff;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        overflow: hidden;
+      }
+      
+      #root {
+        width: 100vw;
+        height: 100vh;
+      }
+      
+      .loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease;
+      }
+      
+      .loading-content {
+        text-align: center;
+      }
+      
+      .loading-title {
+        font-size: 3rem;
+        font-weight: 900;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 1rem;
+      }
+      
+      .loading-subtitle {
+        color: #888;
+        font-size: 1.2rem;
+      }
+      
+      .loading-bar {
+        width: 300px;
+        height: 4px;
+        background: #222;
+        border-radius: 2px;
+        margin: 2rem auto;
+        overflow: hidden;
+      }
+      
+      .loading-progress {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        animation: loading 2s infinite ease-in-out;
+      }
+      
+      @keyframes loading {
+        0% { width: 0%; }
+        50% { width: 80%; }
+        100% { width: 100%; }
+      }
+      
+      .admin-badge {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 245, 255, 0.1);
+        border: 1px solid var(--primary);
+        color: var(--primary);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        z-index: 10000;
+        display: none;
+      }
+      
+      .admin-badge.show {
+        display: block;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+      <div class="loading-content">
+        <h1 class="loading-title">ETHERWORLD</h1>
+        <p class="loading-subtitle">v2.0 • Fusion Réelle • Real-shit intégré</p>
+        <div class="loading-bar">
+          <div class="loading-progress"></div>
+        </div>
+        <p style="color: #444; font-size: 0.9rem;">Chargement des systèmes avancés...</p>
+      </div>
+    </div>
+    
+    <!-- Admin Mode Indicator -->
+    <div id="admin-badge" class="admin-badge">
+      🛠️ MODE ADMIN ACTIVÉ
+    </div>
+
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+    
+    <script>
+      // Auto-hide loading screen when app loads
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loading = document.getElementById('loading-screen');
+          if (loading) {
+            loading.style.opacity = '0';
+            setTimeout(() => loading.remove(), 500);
+          }
+        }, 800);
+      });
+      
+      // Keyboard shortcut for admin console
+      document.addEventListener('keydown', (e) => {
+        if (e.key === '`' && e.ctrlKey) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('open-admin-console'));
+        }
+      });
+      
+      // Easter egg
+      console.log('%c[Ethereal] Bienvenue dans EtherWorld v2.0 Fusionnée 🔥', 'color:#00f5ff; font-size:10px');
+    </script>
+  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0ad6a6f7d8174a5',t:'MTc4MTMxNTEyNQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>

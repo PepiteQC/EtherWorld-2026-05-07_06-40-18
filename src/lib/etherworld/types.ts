@@ -1,4 +1,4 @@
-export type CardAccessLevel = 'resident' | 'staff' | 'admin'
+export type CardAccessLevel = 'guest' | 'resident' | 'vip' | 'staff' | 'admin'
 
 export interface ApartmentDoorConfig {
   id: string
@@ -25,7 +25,29 @@ export interface DecorItem {
 }
 
 export const CARD_COLORS: Record<CardAccessLevel, string> = {
+  guest: '#9ca3af',
   resident: '#22c55e',
+  vip: '#a855f7',
   staff: '#3b82f6',
   admin: '#ef4444',
+}
+
+export type ExtendedCardAccessLevel = CardAccessLevel | 'guest' | 'vip'
+
+export interface CorridorApartment {
+  id: string
+  number: string
+  floor: number
+  side: 'left' | 'right'
+  position: [number, number, number]
+  rotation: [number, number, number]
+  accessLevel: ExtendedCardAccessLevel
+  doorState: 'closed' | 'open' | 'locked'
+  isLocked: boolean
+  occupied: boolean
+  forRent: boolean
+  owner?: string
+  rent?: number
+  doorColor: string
+  lightOn: boolean
 }
